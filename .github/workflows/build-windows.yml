@@ -1,0 +1,45 @@
+name: Build wir3d VST3 (Windows)
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build -S . -G "Visual Studio 17 2022" -A x64
+
+      - name: Build VST3
+        run: cmake --build build --config Release --target WIR3D_VST3 --parallel
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $src = Get-ChildItem -Path build -Recurse -Directory -Filter "wir3d.vst3" | Select-Object -First 1
+          if (-not $src) { throw "No se encontro wir3d.vst3" }
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item -Recurse $src.FullName "dist/wir3d.vst3"
+          Compress-Archive -Path "dist/wir3d.vst3" -DestinationPath "wir3d-VST3-Windows.zip" -Force
+          Get-ChildItem -Recurse dist | Select-Object -First 20 FullName
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wir3d-VST3-Windows
+          path: dist
+
+      - name: Publish release (descarga facil)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "build-${{ github.run_number }}-${{ github.run_attempt }}" wir3d-VST3-Windows.zip `
+            --title "wir3d VST3 - build ${{ github.run_number }}" `
+            --notes "Borra el wir3d.vst3 anterior, descomprime y copia la carpeta wir3d.vst3 a C:\Program Files\Common Files\VST3" `
+            --target "${{ github.sha }}"
